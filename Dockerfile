@@ -1,6 +1,6 @@
 FROM golang:1.23.2-alpine as builder
-ADD . /go/src/github.com/vieux/docker-volume-sshfs
-WORKDIR /go/src/github.com/vieux/docker-volume-sshfs
+ADD . /go/src/github.com/guru-docker/docker-volume-sshfs
+WORKDIR /go/src/github.com/guru-docker/docker-volume-sshfs
 
 RUN apk add --no-cache --virtual .build-deps gcc libc-dev
 RUN go install --ldflags '-extldflags "-static"'
