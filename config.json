@@ -1,5 +1,5 @@
 {
-  "description": "sshFS plugin for Docker",
+  "description": "SSHFS plugin for Docker",
   "documentation": "https://docs.docker.com/engine/extend/plugins/",
   "entrypoint": [
     "/docker-volume-sshfs"

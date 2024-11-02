@@ -7,6 +7,8 @@ import (
 	"github.com/docker/go-plugins-helpers/volume"
 )
 
+const socketAddress = "/run/docker/plugins/sshfs.sock"
+
 func main() {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	d, err := newSshfsDriver("/mnt")

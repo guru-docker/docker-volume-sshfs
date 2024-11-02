@@ -4,16 +4,15 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
-	"github.com/docker/go-plugins-helpers/volume"
-	"github.com/rs/zerolog/log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
-)
 
-const socketAddress = "/run/docker/plugins/sshfs.sock"
+	"github.com/docker/go-plugins-helpers/volume"
+	"github.com/rs/zerolog/log"
+)
 
 type sshfsVolume struct {
 	Password string
