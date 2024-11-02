@@ -1,5 +1,5 @@
-PLUGIN_NAME = vieux/sshfs
-PLUGIN_TAG ?= next
+PLUGIN_NAME = pavhov/sshfs
+PLUGIN_TAG ?= latest
 
 all: clean rootfs create
 
@@ -9,7 +9,7 @@ clean:
 
 rootfs:
 	@echo "### docker build: rootfs image with docker-volume-sshfs"
-	@docker build -q -t ${PLUGIN_NAME}:rootfs .
+	@docker build -t ${PLUGIN_NAME}:rootfs .
 	@echo "### create rootfs directory in ./plugin/rootfs"
 	@mkdir -p ./plugin/rootfs
 	@docker create --name tmp ${PLUGIN_NAME}:rootfs
@@ -31,3 +31,9 @@ enable:
 push:  clean rootfs create enable
 	@echo "### push plugin ${PLUGIN_NAME}:${PLUGIN_TAG}"
 	@docker plugin push ${PLUGIN_NAME}:${PLUGIN_TAG}
+
+install:
+	@docker --context=glab plugin disable ${PLUGIN_NAME}:${PLUGIN_TAG}
+	@docker --context=glab plugin remove ${PLUGIN_NAME}:${PLUGIN_TAG}
+	@docker --context=glab plugin install ${PLUGIN_NAME}:${PLUGIN_TAG}
+	@docker --context=glab plugin enable ${PLUGIN_NAME}:${PLUGIN_TAG}
