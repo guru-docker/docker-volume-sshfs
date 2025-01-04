@@ -1,4 +1,4 @@
-PLUGIN_NAME = pavhov/sshfs
+PLUGIN_NAME = glabservices/plugin-sshfs
 PLUGIN_TAG ?= latest
 
 all: clean rootfs create
