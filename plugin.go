@@ -14,13 +14,12 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type sshfsVolume struct {
+type DockerVolume struct {
 	Password string
 	Sshcmd   string
 	Port     string
 
-	Options []string
-
+	Options     []string
 	Mountpoint  string
 	connections int
 }
@@ -30,44 +29,45 @@ type sshfsDriver struct {
 
 	root      string
 	statePath string
-	volumes   map[string]*sshfsVolume
+	volumes   map[string]*DockerVolume
 }
 
-func newSshfsDriver(root string) (*sshfsDriver, error) {
+func newDockerDriver(root string) (*sshfsDriver, error) {
 	log.Info().Any("method", "new driver").Msg(root)
 
 	d := &sshfsDriver{
 		root:      filepath.Join(root, "volumes"),
 		statePath: filepath.Join(root, "state", "sshfs-state.json"),
-		volumes:   map[string]*sshfsVolume{},
+		volumes:   map[string]*DockerVolume{},
 	}
 
 	data, err := os.ReadFile(d.statePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Debug().Any("statePath", d.statePath).Msg("no state found")
+			log.Warn().Any("statePath", d.statePath).Msg("no state found")
 		} else {
-			return nil, err
+			return nil, logError("failed to read state: %w", err)
 		}
 	} else {
-		if err := json.Unmarshal(data, &d.volumes); err != nil {
-			return nil, err
+		if err = json.Unmarshal(data, &d.volumes); err != nil {
+			return nil, logError("failed to unmarshal state: %w", err)
 		}
 	}
 
 	return d, nil
 }
 
-func (d *sshfsDriver) saveState() {
+func (d *sshfsDriver) saveState() error {
 	data, err := json.Marshal(d.volumes)
 	if err != nil {
-		log.Error().Any("statePath", d.statePath).Msg(err.Error())
-		return
+		return logError("failed to marshal state: %w", err)
 	}
 
-	if err := os.WriteFile(d.statePath, data, 0644); err != nil {
-		log.Error().Any("savestate", d.statePath).Msg(err.Error())
+	if err = os.WriteFile(d.statePath, data, 0644); err != nil {
+		return logError("failed to save state: %w", err)
 	}
+
+	return nil
 }
 
 func (d *sshfsDriver) Create(r *volume.CreateRequest) error {
@@ -75,7 +75,7 @@ func (d *sshfsDriver) Create(r *volume.CreateRequest) error {
 
 	d.Lock()
 	defer d.Unlock()
-	v := &sshfsVolume{}
+	v := &DockerVolume{}
 
 	for key, val := range r.Options {
 		switch key {
@@ -97,13 +97,11 @@ func (d *sshfsDriver) Create(r *volume.CreateRequest) error {
 	if v.Sshcmd == "" {
 		return logError("'sshcmd' option required")
 	}
-	v.Mountpoint = filepath.Join(d.root, fmt.Sprintf("%x", md5.Sum([]byte(v.Sshcmd))))
 
+	v.Mountpoint = filepath.Join(d.root, fmt.Sprintf("%x", md5.Sum([]byte(v.Sshcmd))))
 	d.volumes[r.Name] = v
 
-	d.saveState()
-
-	return nil
+	return d.saveState()
 }
 
 func (d *sshfsDriver) Remove(r *volume.RemoveRequest) error {
@@ -124,8 +122,8 @@ func (d *sshfsDriver) Remove(r *volume.RemoveRequest) error {
 		return logError(err.Error())
 	}
 	delete(d.volumes, r.Name)
-	d.saveState()
-	return nil
+
+	return d.saveState()
 }
 
 func (d *sshfsDriver) Path(r *volume.PathRequest) (*volume.PathResponse, error) {
@@ -156,7 +154,7 @@ func (d *sshfsDriver) Mount(r *volume.MountRequest) (*volume.MountResponse, erro
 	if v.connections == 0 {
 		fi, err := os.Lstat(v.Mountpoint)
 		if os.IsNotExist(err) {
-			if err := os.MkdirAll(v.Mountpoint, 0755); err != nil {
+			if err = os.MkdirAll(v.Mountpoint, 0755); err != nil {
 				return &volume.MountResponse{}, logError(err.Error())
 			}
 		} else if err != nil {
@@ -232,7 +230,9 @@ func (d *sshfsDriver) Capabilities() *volume.CapabilitiesResponse {
 	return &volume.CapabilitiesResponse{Capabilities: volume.Capability{Scope: "local"}}
 }
 
-func (d *sshfsDriver) mountVolume(v *sshfsVolume) error {
+func (d *sshfsDriver) mountVolume(v *DockerVolume) error {
+	log.Info().Any("method", "mountVolume").Msgf("Creating directory: %s", v.Mountpoint)
+
 	cmd := exec.Command("sshfs", "-oStrictHostKeyChecking=no", v.Sshcmd, v.Mountpoint)
 	if v.Port != "" {
 		cmd.Args = append(cmd.Args, "-p", v.Port)
@@ -262,6 +262,6 @@ func (d *sshfsDriver) unmountVolume(target string) error {
 }
 
 func logError(format string, args ...interface{}) error {
-	log.Info().Any("method", "logError").Msgf(format, args...)
+	log.Error().Any("method", "logError").Msgf(format, args...)
 	return fmt.Errorf(format, args...)
 }

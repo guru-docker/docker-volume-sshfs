@@ -11,7 +11,7 @@ const socketAddress = "/run/docker/plugins/sshfs.sock"
 
 func main() {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	d, err := newSshfsDriver("/mnt")
+	d, err := newDockerDriver("/mnt")
 	if err != nil {
 		log.Fatal().Msg(err.Error())
 	}
