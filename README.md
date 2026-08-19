@@ -1,42 +1,41 @@
-# Docker volume plugin for sshFS
+# Docker volume plugin for SSHFS
 
-This plugin allows you to mount remote folder using sshfs in your container easily.
+This plugin lets a container mount a remote directory over SSH as a Docker
+volume, using [sshfs](https://github.com/libfuse/sshfs).
 
 [![CI](https://github.com/guru-docker/docker-volume-sshfs/actions/workflows/ci.yml/badge.svg)](https://github.com/guru-docker/docker-volume-sshfs/actions/workflows/ci.yml)
 
 ## Usage
-
-### Using a password
 
 1 - Install the plugin
 
 ```
 $ docker plugin install glabservices/plugin-sshfs
 
-# or to enable debug 
-docker plugin install glabservices/plugin-sshfs DEBUG=1
+# or to enable debug logging
+$ docker plugin install glabservices/plugin-sshfs DEBUG=1
 
 # or to change where plugin state is stored
-docker plugin install glabservices/plugin-sshfs state.source=<any_folder>
+$ docker plugin install glabservices/plugin-sshfs state.source=<any_folder>
 ```
 
 2 - Create a volume
 
-> Make sure the ***source path on the ssh server was exists***.
-> 
-> Or you'll be failed while use/mount the volume.
+> The remote path must already exist on the SSH server, otherwise mounting
+> the volume fails.
 
 ```
-$ docker volume create -d glabservices/plugin-sshfs -o sshcmd=<user@host:path> -o password=<password> [-o port=<port>] [-o <any_sshfs_-o_option> ] sshvolume
+$ docker volume create -d glabservices/plugin-sshfs \
+    -o sshcmd=<user@host:path> \
+    -o password=<password> \
+    [-o port=<port>] \
+    [-o <any_sshfs_-o_option>] \
+    sshvolume
 sshvolume
+
 $ docker volume ls
-DRIVER              VOLUME NAME
-local               2d75de358a70ba469ac968ee852efd4234b9118b7722ee26a1c5a90dcaea6751
-local               842a765a9bb11e234642c933b3dfc702dee32b73e0cf7305239436a145b89017
-local               9d72c664cbd20512d4e3d5bb9b39ed11e4a632c386447461d48ed84731e44034
-local               be9632386a2d396d438c9707e261f86fd9f5e72a7319417901d84041c8f14a4d
-local               e1496dfe4fa27b39121e4383d1b16a0a7510f0de89f05b336aab3c0deb4dda0e
-glabservices/plugin-sshfs         sshvolume
+DRIVER                      VOLUME NAME
+glabservices/plugin-sshfs   sshvolume
 ```
 
 3 - Use the volume
@@ -45,44 +44,76 @@ glabservices/plugin-sshfs         sshvolume
 $ docker run -it -v sshvolume:<path> busybox ls <path>
 ```
 
-### Using an ssh key
+## Authentication
 
-1 - Install the plugin
+### Password
+
+Pass `-o password=<password>` when creating the volume, as above. The password
+is handed to sshfs over stdin, so it never appears in the process table.
+
+### SSH key
+
+Point the plugin at a directory holding your key, then omit `password`:
 
 ```
 $ docker plugin install glabservices/plugin-sshfs sshkey.source=/home/<user>/.ssh/
 
-# or to enable debug 
-docker plugin install glabservices/plugin-sshfs DEBUG=1 sshkey.source=/home/<user>/.ssh/
-
-# or to change where plugin state is stored
-docker plugin install glabservices/plugin-sshfs state.source=<any_folder> sshkey.source=/home/<user>/.ssh/
+$ docker volume create -d glabservices/plugin-sshfs \
+    -o sshcmd=<user@host:path> \
+    [-o IdentityFile=/root/.ssh/<key>] \
+    [-o port=<port>] \
+    sshvolume
 ```
 
-2 - Create a volume
+The directory is bind-mounted at `/root/.ssh` inside the plugin, which is why
+`IdentityFile` paths are given relative to that location. `sshkey.source` can be
+combined with `DEBUG` and `state.source` on the same install command.
 
-> Make sure the ***source path on the ssh server was exists***.
-> 
-> Or you'll be failed while use/mount the volume.
+## Options
 
-```
-$ docker volume create -d glabservices/plugin-sshfs -o sshcmd=<user@host:path> [-o IdentityFile=/root/.ssh/<key>] [-o port=<port>] [-o <any_sshfs_-o_option> ] sshvolume
-sshvolume
-$ docker volume ls
-DRIVER              VOLUME NAME
-local               2d75de358a70ba469ac968ee852efd4234b9118b7722ee26a1c5a90dcaea6751
-local               842a765a9bb11e234642c933b3dfc702dee32b73e0cf7305239436a145b89017
-local               9d72c664cbd20512d4e3d5bb9b39ed11e4a632c386447461d48ed84731e44034
-local               be9632386a2d396d438c9707e261f86fd9f5e72a7319417901d84041c8f14a4d
-local               e1496dfe4fa27b39121e4383d1b16a0a7510f0de89f05b336aab3c0deb4dda0e
-glabservices/plugin-sshfs         sshvolume
-```
+| Option     | Required | Description                                        |
+| ---------- | -------- | -------------------------------------------------- |
+| `sshcmd`   | yes      | Remote target as `user@host:path`.                 |
+| `password` | no       | Password for the remote user. Omit when using a key. |
+| `port`     | no       | SSH port, if not 22.                               |
 
-3 - Use the volume
+Any other option is passed through to `sshfs -o`, so the usual sshfs options
+work:
 
 ```
-$ docker run -it -v sshvolume:<path> busybox ls <path>
+$ docker volume create -d glabservices/plugin-sshfs \
+    -o sshcmd=root@example.com:/srv/data \
+    -o password=<password> \
+    -o allow_other -o Compression=no \
+    sshvolume
 ```
+
+## Development
+
+```
+# unit tests and static checks
+$ ./scripts/unit.sh
+
+# build the managed plugin locally
+$ make
+
+# end-to-end tests (needs docker and plugin install rights)
+$ sudo ./scripts/integration.sh
+```
+
+`make` targets the local Docker engine by default. Override it with
+`make DOCKER="docker --context=<name>"` to build against another engine, and
+`PLUGIN_NAME` / `PLUGIN_TAG` to change what is built.
+
+## Known limitations
+
+- Volume passwords are written to the plugin's state file in cleartext, at mode
+  `0644`, wherever `state.source` points. Prefer key authentication where the
+  state file is not on trusted storage.
+- Mounts are made with `StrictHostKeyChecking=no`, so the remote host key is
+  accepted without verification.
+- The per-volume connection count is not persisted, so after a plugin restart a
+  volume still in use may be reported as free.
 
 ## LICENSE
 

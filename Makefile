@@ -29,7 +29,7 @@ enable:
 	@echo "### enable plugin ${PLUGIN_NAME}:${PLUGIN_TAG}"
 	@$(DOCKER) plugin enable ${PLUGIN_NAME}:${PLUGIN_TAG}
 
-push:  clean rootfs create enable
+push: clean rootfs create
 	@echo "### push plugin ${PLUGIN_NAME}:${PLUGIN_TAG}"
 	@$(DOCKER) plugin push ${PLUGIN_NAME}:${PLUGIN_TAG}
 

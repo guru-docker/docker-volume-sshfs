@@ -1,0 +1,50 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Plugin tag to publish, e.g. v1.2.3'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: build and publish plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          check-latest: true
+
+      # Never publish a plugin that does not pass its own tests.
+      - name: gofmt, vet and tests
+        run: ./scripts/unit.sh
+
+      - name: resolve plugin tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: echo "value=${INPUT_TAG:-$GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: publish ${{ steps.tag.outputs.value }}
+        run: make push PLUGIN_TAG="${{ steps.tag.outputs.value }}"
+
+      # The README tells users to install without a tag, which resolves to
+      # :latest, so a release has to move that too. Pre-release tags carry a
+      # hyphen (v1.2.3-rc1) and must not.
+      - name: publish latest
+        if: ${{ !contains(steps.tag.outputs.value, '-') }}
+        run: make push PLUGIN_TAG=latest
