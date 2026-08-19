@@ -1,4 +1,4 @@
-FROM golang:1.23.2-alpine AS builder
+FROM golang:1.26.5-alpine AS builder
 ADD . /go/src/github.com/guru-docker/docker-volume-sshfs
 WORKDIR /go/src/github.com/guru-docker/docker-volume-sshfs
 
