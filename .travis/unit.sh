@@ -1,13 +1,19 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Unit tests and static checks. Requires only a Go toolchain.
+set -euo pipefail
 
-set -e
-set -x
+cd "$(dirname "$0")/.."
 
-#install
-go get github.com/golang/lint/golint
+echo "### gofmt"
+unformatted=$(gofmt -s -l .)
+if [ -n "$unformatted" ]; then
+	echo "not gofmt-clean:" >&2
+	echo "$unformatted" >&2
+	exit 1
+fi
 
-#script
-test -z "$(go vet ./... | grep -v vendor/ | tee /dev/stderr)"
-test -z "$(golint ./... | grep -v vendor/ | tee /dev/stderr)"
-test -z "$(gofmt -s -l . | grep -v vendor/ | tee /dev/stderr)"
-go list ./... | go test -v
+echo "### go vet"
+go vet ./...
+
+echo "### go test"
+go test -race -cover ./...
