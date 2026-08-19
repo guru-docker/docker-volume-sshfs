@@ -30,6 +30,11 @@ type sshfsDriver struct {
 	root      string
 	statePath string
 	volumes   map[string]*DockerVolume
+
+	// mount and unmount indirect through the real sshfs/umount helpers by
+	// default; tests replace them to exercise the driver without a mount.
+	mount   func(*DockerVolume) error
+	unmount func(string) error
 }
 
 func newDockerDriver(root string) (*sshfsDriver, error) {
@@ -40,6 +45,8 @@ func newDockerDriver(root string) (*sshfsDriver, error) {
 		statePath: filepath.Join(root, "state", "sshfs-state.json"),
 		volumes:   map[string]*DockerVolume{},
 	}
+	d.mount = d.mountVolume
+	d.unmount = d.unmountVolume
 
 	data, err := os.ReadFile(d.statePath)
 	if err != nil {
@@ -119,7 +126,7 @@ func (d *sshfsDriver) Remove(r *volume.RemoveRequest) error {
 		return logError("volume %s is currently used by a container", r.Name)
 	}
 	if err := os.RemoveAll(v.Mountpoint); err != nil {
-		return logError(err.Error())
+		return logError("%v", err)
 	}
 	delete(d.volumes, r.Name)
 
@@ -155,18 +162,18 @@ func (d *sshfsDriver) Mount(r *volume.MountRequest) (*volume.MountResponse, erro
 		fi, err := os.Lstat(v.Mountpoint)
 		if os.IsNotExist(err) {
 			if err = os.MkdirAll(v.Mountpoint, 0755); err != nil {
-				return &volume.MountResponse{}, logError(err.Error())
+				return &volume.MountResponse{}, logError("%v", err)
 			}
 		} else if err != nil {
-			return &volume.MountResponse{}, logError(err.Error())
+			return &volume.MountResponse{}, logError("%v", err)
 		}
 
 		if fi != nil && !fi.IsDir() {
 			return &volume.MountResponse{}, logError("%v already exist and it's not a directory", v.Mountpoint)
 		}
 
-		if err := d.mountVolume(v); err != nil {
-			return &volume.MountResponse{}, logError(err.Error())
+		if err := d.mount(v); err != nil {
+			return &volume.MountResponse{}, logError("%v", err)
 		}
 	}
 
@@ -188,8 +195,8 @@ func (d *sshfsDriver) Unmount(r *volume.UnmountRequest) error {
 	v.connections--
 
 	if v.connections <= 0 {
-		if err := d.unmountVolume(v.Mountpoint); err != nil {
-			return logError(err.Error())
+		if err := d.unmount(v.Mountpoint); err != nil {
+			return logError("%v", err)
 		}
 		v.connections = 0
 	}
@@ -230,20 +237,28 @@ func (d *sshfsDriver) Capabilities() *volume.CapabilitiesResponse {
 	return &volume.CapabilitiesResponse{Capabilities: volume.Capability{Scope: "local"}}
 }
 
+// sshfsArgs renders the argument list passed to sshfs(1) for v, excluding the
+// program name. The password, when set, is fed over stdin rather than argv.
+func sshfsArgs(v *DockerVolume) []string {
+	args := []string{"-oStrictHostKeyChecking=no", v.Sshcmd, v.Mountpoint}
+	if v.Port != "" {
+		args = append(args, "-p", v.Port)
+	}
+	if v.Password != "" {
+		args = append(args, "-o", "workaround=rename", "-o", "password_stdin")
+	}
+	for _, option := range v.Options {
+		args = append(args, "-o", option)
+	}
+	return args
+}
+
 func (d *sshfsDriver) mountVolume(v *DockerVolume) error {
 	log.Info().Any("method", "mountVolume").Msgf("Creating directory: %s", v.Mountpoint)
 
-	cmd := exec.Command("sshfs", "-oStrictHostKeyChecking=no", v.Sshcmd, v.Mountpoint)
-	if v.Port != "" {
-		cmd.Args = append(cmd.Args, "-p", v.Port)
-	}
+	cmd := exec.Command("sshfs", sshfsArgs(v)...)
 	if v.Password != "" {
-		cmd.Args = append(cmd.Args, "-o", "workaround=rename", "-o", "password_stdin")
 		cmd.Stdin = strings.NewReader(v.Password)
-	}
-
-	for _, option := range v.Options {
-		cmd.Args = append(cmd.Args, "-o", option)
 	}
 
 	log.Info().Any("method", "mountVolume").Msgf("%v", cmd.Args)
