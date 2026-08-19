@@ -9,7 +9,7 @@
 # Requires: docker with plugin support, and permission to install plugins
 # (usually root). Override DOCKER=... to target a specific engine.
 #
-#   ./.travis/integration.sh
+#   ./scripts/integration.sh
 #
 set -euo pipefail
 
@@ -69,7 +69,7 @@ roundtrip() {
 
 log "pull fixtures"
 $DOCKER pull -q busybox
-$DOCKER build -q -t "$SSHD_IMAGE" .travis/ssh
+$DOCKER build -q -t "$SSHD_IMAGE" scripts/ssh
 
 log "build and enable plugin $PLUGIN"
 PLUGIN_NAME="$PLUGIN_NAME" PLUGIN_TAG="$PLUGIN_TAG" DOCKER="$DOCKER" make
@@ -105,7 +105,7 @@ roundtrip "relocated state" \
 
 log "case: ssh key auth"
 $DOCKER plugin disable "$PLUGIN"
-$DOCKER plugin set "$PLUGIN" sshkey.source="$(pwd)/.travis/ssh/"
+$DOCKER plugin set "$PLUGIN" sshkey.source="$(pwd)/scripts/ssh/"
 $DOCKER plugin enable "$PLUGIN"
 roundtrip "ssh key auth" \
 	-o sshcmd=root@localhost:/tmp -o port="$SSHD_PORT"
