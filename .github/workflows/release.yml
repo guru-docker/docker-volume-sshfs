@@ -16,6 +16,10 @@ jobs:
   publish:
     name: build and publish plugin
     runs-on: ubuntu-latest
+    # secrets.* cannot be read from a step-level `if`, so the presence check
+    # below goes through the job environment instead.
+    env:
+      HAS_HUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,3 +52,23 @@ jobs:
       - name: publish latest
         if: ${{ !contains(steps.tag.outputs.value, '-') }}
         run: make push PLUGIN_TAG=latest
+
+      # Docker Hub keeps one overview per repository, not one per tag, so this
+      # runs once per release and the tag it was released from is what the
+      # overview then documents. A pre-release must not move it, same as
+      # :latest.
+      #
+      # This needs DOCKERHUB_PASSWORD rather than DOCKERHUB_TOKEN: Docker Hub
+      # rejects full_description updates made with a personal access token
+      # ("access to the resource is forbidden with personal access token").
+      # A dedicated machine account without 2FA keeps that blast radius small.
+      - name: update the Docker Hub overview
+        if: ${{ !contains(steps.tag.outputs.value, '-') && env.HAS_HUB_PASSWORD == 'true' }}
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+          repository: glabservices/plugin-sshfs
+          short-description: SSHFS volume plugin for Docker
+          readme-filepath: ./README.md
+          enable-url-completion: true
